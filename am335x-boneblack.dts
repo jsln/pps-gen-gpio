@@ -11,6 +11,9 @@
 #include "am335x-bone-common.dtsi"
 
 / {
+	model = "TI AM335x BeagleBone Black";
+	compatible = "ti,am335x-bone-black", "ti,am335x-bone", "ti,am33xx";
+
 	pps-gen {
 		pinctrl-names = "default";
 		pinctrl-0 = <&pps_gen_pins>;
@@ -36,7 +39,6 @@
 	pinctrl-0 = <&emmc_pins>;
 	bus-width = <8>;
 	status = "okay";
-	ti,vcc-aux-disable-is-sleep;
 };
 
 &am33xx_pinmux {

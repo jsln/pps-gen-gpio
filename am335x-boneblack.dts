@@ -14,10 +14,10 @@
 	model = "TI AM335x BeagleBone Black";
 	compatible = "ti,am335x-bone-black", "ti,am335x-bone", "ti,am33xx";
 
-	pps-gen {
+	pps-generator {
 		pinctrl-names = "default";
 		pinctrl-0 = <&pps_gen_pins>;
-		compatible = "pps-generator-gpios";
+		compatible = "pps-gen-gpios";
 		pps-gen-gpios = <&gpio1 19 GPIO_ACTIVE_HIGH>;
 		default-state = "off";
 	};

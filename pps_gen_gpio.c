@@ -2,7 +2,7 @@
  * pps_gen_gpio.c -- kernel GPIO PPS signal generator
  *
  *
- * Copyright (C) 2014   Juan Solano <jsm@jsolano.com>
+ * Copyright (C) 2015   Juan Solano <jsm@jsolano.com>
  *               2009   Alexander Gordeev <lasaine@lvk.cs.msu.su>
  *
  * This program is free software; you can redistribute it and/or modify
@@ -33,8 +33,8 @@
 #include <linux/of_gpio.h>
 
 #define DRVDESC "GPIO PPS signal generator"
-#define SEND_DELAY_MAX		100000
-#define SAFETY_INTERVAL	3000	/* set the hrtimer earlier for safety (ns) */
+#define SEND_DELAY_MAX  100000
+#define SAFETY_INTERVAL  10000	/* set the hrtimer earlier for safety (ns) */
 
 /* module parameters */
 static unsigned int send_delay = 30000;
@@ -114,6 +114,7 @@ done:
 	/* update calibrated hrtimer error */
 	dts = timespec_sub(ts1, expire_time);
 	delta = timespec_to_ns(&dts);
+
 	/* If the new error value is bigger then the old, use the new
 	 * value, if not then slowly move towards the new value. This
 	 * way it should be safe in bad conditions and efficient in
@@ -130,7 +131,7 @@ done:
 				      NSEC_PER_SEC - (send_delay +
 				      devdata->port_write_time +
 				      SAFETY_INTERVAL +
-				      2 * hrtimer_error)));
+				      hrtimer_error)));
 
 	return HRTIMER_RESTART;
 }
@@ -175,11 +176,12 @@ static int pps_gen_gpio_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct device *dev = &pdev->dev;
-	struct device_node *np = dev->of_node;
 	struct pps_gen_gpio_devdata *devdata;
 	int num_gpios;
 
-	num_gpios = of_gpio_named_count(np, "pps-gen-gpios");
+	/* get number of gpios defined in property pps-gen-gpios of DT node
+	 * pdev->name */
+	num_gpios = of_gpio_named_count(dev->of_node, "pps-gen-gpios");
 	if (num_gpios < 1) {
 		dev_err(dev,
 			"cannot find a corresponding GPIO defined in DT [%d]\n",
@@ -195,7 +197,7 @@ static int pps_gen_gpio_probe(struct platform_device *pdev)
 	if (!devdata)
 		return -ENOMEM;
 
-	/* gpio defined in device tree */
+	/* pps-gen is the function associated with gpio list pps-gen-gpios */
 	devdata->pps_gpio = devm_gpiod_get(dev, "pps-gen");
 	if (IS_ERR(devdata->pps_gpio)) {
 		dev_err(dev, "cannot get PPS GPIO %ld\n",
@@ -227,32 +229,23 @@ static int pps_gen_gpio_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static void pps_gen_gpio_release(struct device *pdev)
-{
-}
-
+/* the compatible property here defined is searched for in DT, and 
+ * when a match is found, the corresponding DT node name is passed
+ * backed in pdev->name */
 static const struct of_device_id pps_gen_gpio_dt_ids[] = {
-	{ .compatible = "pps-generator-gpios", },
+	{ .compatible = "pps-gen-gpios", },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, pps_gen_gpio_dt_ids);
 
 static struct platform_driver pps_gen_gpio_driver = {
 	.driver		= {
-		.name	= "pps_gen_gpio",
+		.name	= "pps_gen_gpio", /* not used to match device */
 		.owner	= THIS_MODULE,
 		.of_match_table = of_match_ptr(pps_gen_gpio_dt_ids),
 	},
 	.probe		= pps_gen_gpio_probe,
 	.remove		= pps_gen_gpio_remove,
-};
-
-static struct platform_device pps_gen_gpio_device = {
-	.name = "pps_gen_gpio",
-	.id = 0,
-	.dev = {
-		.release = pps_gen_gpio_release,
-	},
 };
 
 static int __init pps_gen_gpio_init(void)
@@ -263,7 +256,6 @@ static int __init pps_gen_gpio_init(void)
 		       SEND_DELAY_MAX);
 		return -EINVAL;
 	}
-	platform_device_register(&pps_gen_gpio_device);
 	platform_driver_register(&pps_gen_gpio_driver);
 	return 0;
 }
@@ -272,7 +264,6 @@ static void __exit pps_gen_gpio_exit(void)
 {
 	pr_info("hrtimer avg error is %ldns\n", hrtimer_error);
 	platform_driver_unregister(&pps_gen_gpio_driver);
-	platform_device_unregister(&pps_gen_gpio_device);
 }
 
 module_init(pps_gen_gpio_init);

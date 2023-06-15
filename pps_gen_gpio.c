@@ -64,12 +64,12 @@ static enum hrtimer_restart hrtimer_callback(struct hrtimer *timer)
 		NSEC_PER_SEC - devdata->gpio_instr_time;
 	const long time_gpio_assert_ns =
 		time_gpio_deassert_ns - gpio_pulse_width_ns;
-	struct timespec ts_expire_req, ts_expire_real, ts_gpio_instr_time,
+	struct timespec64 ts_expire_req, ts_expire_real, ts_gpio_instr_time,
 			ts_hrtimer_latency, ts1, ts2;
 
 	/* We have to disable interrupts here. The idea is to prevent
 	 * other interrupts on the same processor to introduce random
-	 * lags while polling the clock; getnstimeofday() takes <1us on
+	 * lags while polling the clock; ktime_get_real_ts64() takes <1us on
 	 * most machines while other interrupt handlers can take much
 	 * more potentially.
 	 *
@@ -79,19 +79,19 @@ static enum hrtimer_restart hrtimer_callback(struct hrtimer *timer)
 	local_irq_save(irq_flags);
 
 	/* Get current timestamp and requested time to check if we are late. */
-	getnstimeofday(&ts_expire_real);
-	ts_expire_req = ktime_to_timespec(hrtimer_get_softexpires(timer));
+	ktime_get_real_ts64(&ts_expire_real);
+	ts_expire_req = ktime_to_timespec64(hrtimer_get_softexpires(timer));
 	if (ts_expire_req.tv_sec != ts_expire_real.tv_sec
 	    || ts_expire_real.tv_nsec > time_gpio_assert_ns) {
 		local_irq_restore(irq_flags);
-		pr_err("We are late this time [%ld.%09ld]\n",
+		pr_err("We are late this time [%lld.%09ld]\n",
 		       ts_expire_real.tv_sec, ts_expire_real.tv_nsec);
 		goto done;
 	}
 
 	/* Busy loop until the time is right for a GPIO assert. */
 	do
-		getnstimeofday(&ts1);
+		ktime_get_real_ts64(&ts1);
 	while (ts_expire_req.tv_sec == ts1.tv_sec
 	       && ts1.tv_nsec < time_gpio_assert_ns);
 
@@ -100,25 +100,25 @@ static enum hrtimer_restart hrtimer_callback(struct hrtimer *timer)
 
 	/* Busy loop until the time is right for a GPIO deassert. */
 	do
-		getnstimeofday(&ts1);
+		ktime_get_real_ts64(&ts1);
 	while (ts_expire_req.tv_sec == ts1.tv_sec
 	       && ts1.tv_nsec < time_gpio_deassert_ns);
 
 	/* Deassert PPS GPIO. */
 	gpiod_set_value(devdata->pps_gpio, PPS_GPIO_LOW);
 
-	getnstimeofday(&ts2);
+	ktime_get_real_ts64(&ts2);
 	local_irq_restore(irq_flags);
 
 	/* Update the calibrated GPIO set instruction time. */
-	ts_gpio_instr_time = timespec_sub(ts2, ts1);
+	ts_gpio_instr_time = timespec64_sub(ts2, ts1);
 	devdata->gpio_instr_time = (devdata->gpio_instr_time
-				    + timespec_to_ns(&ts_gpio_instr_time)) / 2;
+				    + timespec64_to_ns(&ts_gpio_instr_time)) / 2;
 
 done:
 	/* Update the average hrtimer latency. */
-	ts_hrtimer_latency = timespec_sub(ts_expire_real, ts_expire_req);
-	hrtimer_latency = timespec_to_ns(&ts_hrtimer_latency);
+	ts_hrtimer_latency = timespec64_sub(ts_expire_real, ts_expire_req);
+	hrtimer_latency = timespec64_to_ns(&ts_hrtimer_latency);
 
 	/* If the new latency value is bigger then the old, use the new
 	 * value, if not then slowly move towards the new value. This
@@ -149,17 +149,17 @@ static void pps_gen_calibrate(struct pps_gen_gpio_devdata *devdata)
 	long time_acc = 0;
 
 	for (i = 0; i < PPS_GEN_CALIBRATE_LOOPS; i++) {
-		struct timespec ts1, ts2, ts_delta;
+		struct timespec64 ts1, ts2, ts_delta;
 		unsigned long irq_flags;
 
 		local_irq_save(irq_flags);
-		getnstimeofday(&ts1);
+		ktime_get_real_ts64(&ts1);
 		gpiod_set_value(devdata->pps_gpio, PPS_GPIO_LOW);
-		getnstimeofday(&ts2);
+		ktime_get_real_ts64(&ts2);
 		local_irq_restore(irq_flags);
 
-		ts_delta = timespec_sub(ts2, ts1);
-		time_acc += timespec_to_ns(&ts_delta);
+		ts_delta = timespec64_sub(ts2, ts1);
+		time_acc += timespec64_to_ns(&ts_delta);
 	}
 
 	devdata->gpio_instr_time = time_acc / PPS_GEN_CALIBRATE_LOOPS;
@@ -168,9 +168,9 @@ static void pps_gen_calibrate(struct pps_gen_gpio_devdata *devdata)
 
 static ktime_t pps_gen_first_timer_event(struct pps_gen_gpio_devdata *devdata)
 {
-	struct timespec ts;
+	struct timespec64 ts;
 
-	getnstimeofday(&ts);
+	ktime_get_real_ts64(&ts);
 	/* First timer callback will be triggered between 1 and 2 seconds from
 	 * now, synchronized to the tv_sec increment of the wall-clock time.
 	 */

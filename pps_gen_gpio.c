@@ -84,8 +84,9 @@ static enum hrtimer_restart hrtimer_callback(struct hrtimer *timer)
 	if (ts_expire_req.tv_sec != ts_expire_real.tv_sec
 	    || ts_expire_real.tv_nsec > time_gpio_assert_ns) {
 		local_irq_restore(irq_flags);
-		pr_err("We are late this time [%lld.%09ld]\n",
-		       ts_expire_real.tv_sec, ts_expire_real.tv_nsec);
+		pr_err("We are late this time, %lld.%09ld but required %lld.%09ld\n",
+		       ts_expire_real.tv_sec, ts_expire_real.tv_nsec,
+		       ts_expire_req.tv_sec, ts_expire_req.tv_nsec);
 		goto done;
 	}
 
@@ -133,7 +134,7 @@ done:
 
 	/* Update the hrtimer expire time. */
 	hrtimer_set_expires(timer,
-			    ktime_set(ts_expire_req.tv_sec + 1,
+			    ktime_set(ts_expire_real.tv_sec + 1,
 				      time_gpio_assert_ns
 				      - hrtimer_avg_latency
 				      - SAFETY_INTERVAL_NS));

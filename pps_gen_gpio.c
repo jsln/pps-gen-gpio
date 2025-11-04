@@ -32,6 +32,7 @@ MODULE_LICENSE("GPL");
 #define GPIO_PULSE_WIDTH_DEF_NS (30 * NSEC_PER_USEC)    /* 30us */
 #define GPIO_PULSE_WIDTH_MAX_NS (100 * NSEC_PER_USEC)   /* 100us */
 #define SAFETY_INTERVAL_NS      (10 * NSEC_PER_USEC)    /* 10us */
+#define MAX_LATENCY_NS          (100 * NSEC_PER_USEC)   /* 100us */
 
 enum pps_gen_gpio_level {
 	PPS_GPIO_LOW = 0,
@@ -84,8 +85,9 @@ static enum hrtimer_restart hrtimer_callback(struct hrtimer *timer)
 	if (ts_expire_req.tv_sec != ts_expire_real.tv_sec
 	    || ts_expire_real.tv_nsec > time_gpio_assert_ns) {
 		local_irq_restore(irq_flags);
-		pr_err("We are late this time [%lld.%09ld]\n",
-		       ts_expire_real.tv_sec, ts_expire_real.tv_nsec);
+		pr_err("We are late this time, %lld.%09ld but required %lld.%09ld\n",
+		       ts_expire_real.tv_sec, ts_expire_real.tv_nsec,
+		       ts_expire_req.tv_sec, ts_expire_req.tv_nsec);
 		goto done;
 	}
 
@@ -125,15 +127,17 @@ done:
 	 * way it should be safe in bad conditions and efficient in
 	 * good conditions.
 	 */
-	if (hrtimer_latency > hrtimer_avg_latency)
-		hrtimer_avg_latency = hrtimer_latency;
-	else
-		hrtimer_avg_latency =
-			(3 * hrtimer_avg_latency + hrtimer_latency) / 4;
+	if (hrtimer_latency >= 0 && hrtimer_latency <= MAX_LATENCY_NS) {
+		if (hrtimer_latency > hrtimer_avg_latency)
+			hrtimer_avg_latency = hrtimer_latency;
+		else
+			hrtimer_avg_latency =
+				(3 * hrtimer_avg_latency + hrtimer_latency) / 4;
+	}
 
 	/* Update the hrtimer expire time. */
 	hrtimer_set_expires(timer,
-			    ktime_set(ts_expire_req.tv_sec + 1,
+			    ktime_set(ts_expire_real.tv_sec + 1,
 				      time_gpio_assert_ns
 				      - hrtimer_avg_latency
 				      - SAFETY_INTERVAL_NS));
